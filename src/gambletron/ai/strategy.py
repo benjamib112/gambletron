@@ -9,6 +9,41 @@ from typing import Dict, List, Optional
 import numpy as np
 
 
+class CheckpointStrategy:
+    """Strategy backed by a C++ binary checkpoint — no full extraction needed.
+
+    Loads the .bin checkpoint into the C++ engine and queries infosets
+    on demand, avoiding the memory cost of a full Python dict.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        import gambletron_engine as engine
+
+        self._config = engine.MCCFRConfig()
+        self._config.num_players = 6
+        self._trainer = engine.MCCFRTrainer(self._config)
+        self._trainer.load_checkpoint(str(path))
+
+    def get(self, key: int) -> Optional[List[float]]:
+        avg = self._trainer.get_average_strategy(key)
+        if not avg:
+            return None
+        return list(avg)
+
+    def get_or_uniform(self, key: int, num_actions: int) -> List[float]:
+        avg = self._trainer.get_average_strategy(key)
+        if avg and len(avg) > 0:
+            return list(avg)
+        return [1.0 / num_actions] * num_actions
+
+    def __len__(self) -> int:
+        return self._trainer.num_infosets()
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "CheckpointStrategy":
+        return cls(path)
+
+
 class Strategy:
     """Stores action probability distributions keyed by infoset."""
 

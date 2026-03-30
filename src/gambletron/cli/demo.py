@@ -34,14 +34,18 @@ def run_demo(
 
     # Auto-detect blueprint: use explicit path, or find difficulty snapshot
     if blueprint_path is None:
-        snapshot = Path(models_dir) / f"{difficulty.value}.pkl"
-        if snapshot.exists():
-            blueprint_path = str(snapshot)
-        else:
-            # Fall back to main blueprint
-            main_bp = Path(models_dir) / "blueprint.pkl"
-            if main_bp.exists():
-                blueprint_path = str(main_bp)
+        # Prefer .bin (checkpoint) over .pkl (legacy)
+        for ext in (".bin", ".pkl"):
+            snapshot = Path(models_dir) / f"{difficulty.value}{ext}"
+            if snapshot.exists():
+                blueprint_path = str(snapshot)
+                break
+        if blueprint_path is None:
+            for ext in (".bin", ".pkl"):
+                main_bp = Path(models_dir) / f"blueprint{ext}"
+                if main_bp.exists():
+                    blueprint_path = str(main_bp)
+                    break
 
     if blueprint_path:
         print(f"  Blueprint: {blueprint_path}")
@@ -52,9 +56,12 @@ def run_demo(
     # Load blueprint if available
     blueprint = None
     if blueprint_path and Path(blueprint_path).exists():
-        from gambletron.ai.strategy import Strategy
-
-        blueprint = Strategy.from_file(blueprint_path)
+        if blueprint_path.endswith(".bin"):
+            from gambletron.ai.strategy import CheckpointStrategy
+            blueprint = CheckpointStrategy.from_file(blueprint_path)
+        else:
+            from gambletron.ai.strategy import Strategy
+            blueprint = Strategy.from_file(blueprint_path)
         print(f"Loaded blueprint with {len(blueprint)} infosets")
 
     # Create players
@@ -160,8 +167,12 @@ def run_ai_only(
 
     blueprint = None
     if blueprint_path and Path(blueprint_path).exists():
-        from gambletron.ai.strategy import Strategy
-        blueprint = Strategy.from_file(blueprint_path)
+        if blueprint_path.endswith(".bin"):
+            from gambletron.ai.strategy import CheckpointStrategy
+            blueprint = CheckpointStrategy.from_file(blueprint_path)
+        else:
+            from gambletron.ai.strategy import Strategy
+            blueprint = Strategy.from_file(blueprint_path)
 
     players = [
         AIPlayer(name=f"AI_{i}", blueprint=blueprint, difficulty=difficulty, seed=i * 37)
