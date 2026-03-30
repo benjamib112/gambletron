@@ -34,6 +34,13 @@ class Table:
 
     def play_hand(self) -> List[int]:
         """Play a single hand and return chip changes."""
+        # Check if enough players have chips to play
+        active_count = sum(1 for s in self.stacks if s > 0)
+        if active_count < 2:
+            return [0] * len(self.players)
+
+        # Auto-fold busted players by marking them with 0 stacks
+        # (Game will fold them since they can't post blinds or act)
         game = Game(
             players=self.players,
             stacks=list(self.stacks),

@@ -56,51 +56,57 @@ class HumanPlayer(Player):
         my_stack = state.my_stack
 
         while True:
-            options = []
+            options = {}
+
             if to_call > 0:
-                options.append("f")
+                options["f"] = Action.fold()
                 print(f"  [f] Fold")
 
             if to_call == 0:
-                options.append("c")
+                options["c"] = Action.call()
                 print(f"  [c] Check")
             else:
                 call_amount = min(to_call, my_stack)
-                options.append("c")
+                options["c"] = Action.call()
                 print(f"  [c] Call ${call_amount}")
 
             chips_after_call = my_stack - to_call
             if chips_after_call > 0:
                 min_raise_to = current_bet + state.min_raise
                 max_raise_to = my_bet + my_stack
-                options.append("r")
-                print(f"  [r] Raise (${min_raise_to} - ${max_raise_to})")
-                options.append("a")
-                print(f"  [a] All-in (${max_raise_to})")
+                if max_raise_to > current_bet:
+                    if min_raise_to > max_raise_to:
+                        min_raise_to = max_raise_to
+
+                    if state.betting_round == BettingRound.PREFLOP:
+                        # Standard open (2.5x BB)
+                        if 250 >= min_raise_to and 250 < max_raise_to:
+                            options["r"] = Action.raise_to(250)
+                            print(f"  [r] Raise to $250")
+                        # Pot-sized raise
+                        pot_raise = state.pot + 2 * to_call + current_bet
+                        if (pot_raise >= min_raise_to and pot_raise < max_raise_to
+                                and pot_raise != 250):
+                            options["p"] = Action.raise_to(pot_raise)
+                            print(f"  [p] Pot raise to ${pot_raise}")
+                        # All-in
+                        if max_raise_to > min_raise_to:
+                            options["a"] = Action.raise_to(max_raise_to)
+                            print(f"  [a] All-in (${max_raise_to})")
+                    else:
+                        # Postflop: pot-sized raise
+                        pot_raise = current_bet + state.pot + to_call
+                        if pot_raise >= min_raise_to and pot_raise <= max_raise_to:
+                            options["r"] = Action.raise_to(pot_raise)
+                            print(f"  [r] Pot raise to ${pot_raise}")
+                        elif max_raise_to >= min_raise_to:
+                            options["a"] = Action.raise_to(max_raise_to)
+                            print(f"  [a] All-in (${max_raise_to})")
 
             choice = input("Your action: ").strip().lower()
 
-            if choice == "f" and "f" in options:
-                return Action.fold()
-            elif choice == "c":
-                return Action.call()
-            elif choice == "r" and "r" in options:
-                try:
-                    amount = int(input("Raise to: $"))
-                    min_raise_to = current_bet + state.min_raise
-                    max_raise_to = my_bet + my_stack
-                    if amount < min_raise_to:
-                        print(f"Minimum raise is ${min_raise_to}")
-                        continue
-                    if amount > max_raise_to:
-                        print(f"Maximum raise is ${max_raise_to}")
-                        continue
-                    return Action.raise_to(amount)
-                except ValueError:
-                    print("Please enter a valid number.")
-            elif choice == "a" and "a" in options:
-                max_raise_to = my_bet + my_stack
-                return Action.raise_to(max_raise_to)
+            if choice in options:
+                return options[choice]
             else:
                 print("Invalid choice. Try again.")
 

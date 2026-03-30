@@ -194,23 +194,36 @@ class AIPlayer(Player):
         return actions[-1]
 
     def _make_key(self, state: VisibleGameState) -> int:
-        """Make an infoset key from visible state."""
+        """Make an infoset key using the same C++ hash as training."""
+        import gambletron_engine as engine
+
+        # Encode actions the same way as MCCFR training:
+        # 0=fold, 1=call, -1=all-in, N>=100=raise-to-N
         action_seq = []
         for seat, action in self._action_history:
-            action_seq.append(action.type.value * 10000 + action.amount)
+            if action.type == ActionType.FOLD:
+                action_seq.append(0)
+            elif action.type == ActionType.CALL:
+                action_seq.append(1)
+            elif action.type == ActionType.RAISE:
+                action_seq.append(action.amount)
 
-        return make_infoset_key(
+        return engine.builtin_infoset_key(
             state.my_seat,
-            state.betting_round,
-            (state.my_cards[0].int_value, state.my_cards[1].int_value),
-            tuple(c.int_value for c in state.community_cards),
-            len(state.community_cards),
-            tuple(action_seq),
-            len(action_seq),
+            int(state.betting_round),
+            [state.my_cards[0].int_value, state.my_cards[1].int_value],
+            [c.int_value for c in state.community_cards],
+            action_seq,
         )
 
     def _get_legal_actions(self, state: VisibleGameState) -> list[Action]:
-        """Compute legal actions from visible state."""
+        """Compute legal actions matching MCCFR training abstraction.
+
+        Must produce the same action set as get_available_actions() in mccfr.cpp:
+        - Preflop: fold, call, raise-to-250, pot-raise, all-in
+        - Postflop: fold, call, pot-raise (or all-in if can't pot-raise)
+        - Raise cap: 2 raises per round
+        """
         current_bet = max(state.player_bets)
         my_bet = state.player_bets[state.my_seat]
         my_stack = state.player_stacks[state.my_seat]
@@ -218,19 +231,45 @@ class AIPlayer(Player):
 
         actions = []
 
+        # Fold (only if facing a bet)
         if to_call > 0:
             actions.append(Action.fold())
 
+        # Call/Check
         actions.append(Action.call())
 
+        # Raises (only if chips remain after calling)
         chips_after_call = my_stack - to_call
-        if chips_after_call > 0:
-            min_raise_to = current_bet + state.min_raise
-            max_raise_to = my_bet + my_stack
-            if max_raise_to > current_bet:
-                actual_min = min(min_raise_to, max_raise_to)
-                actions.append(Action.raise_to(actual_min))
-                if max_raise_to > actual_min:
-                    actions.append(Action.raise_to(max_raise_to))
+        if chips_after_call <= 0:
+            return actions
+
+        min_raise_to = current_bet + state.min_raise
+        max_raise_to = my_bet + my_stack
+        if max_raise_to <= current_bet:
+            return actions
+
+        if min_raise_to > max_raise_to:
+            min_raise_to = max_raise_to
+
+        if state.betting_round == BettingRound.PREFLOP:
+            # 2.5x BB standard open
+            standard_open = 250
+            if standard_open >= min_raise_to and standard_open < max_raise_to:
+                actions.append(Action.raise_to(standard_open))
+            # Pot-sized raise
+            pot_raise = state.pot + 2 * to_call + current_bet
+            if (pot_raise >= min_raise_to and pot_raise < max_raise_to
+                    and pot_raise != standard_open):
+                actions.append(Action.raise_to(pot_raise))
+            # All-in
+            if max_raise_to > min_raise_to:
+                actions.append(Action.raise_to(max_raise_to))
+        else:
+            # Postflop: pot-sized raise only
+            pot_raise = current_bet + state.pot + to_call
+            if pot_raise >= min_raise_to and pot_raise <= max_raise_to:
+                actions.append(Action.raise_to(pot_raise))
+            elif max_raise_to >= min_raise_to:
+                actions.append(Action.raise_to(max_raise_to))  # All-in
 
         return actions

@@ -27,6 +27,22 @@ PYBIND11_MODULE(gambletron_engine, m) {
         py::arg("score"),
         "Extract the hand category from a score.");
 
+    // Expose builtin_infoset_key for use in Python AI player
+    m.def("builtin_infoset_key",
+        [](int player, int betting_round,
+           const std::vector<int>& hole_cards,
+           const std::vector<int>& board,
+           const std::vector<int>& action_seq) -> uint64_t {
+            return gambletron::builtin_infoset_key(
+                player, betting_round,
+                hole_cards.data(), static_cast<int>(hole_cards.size()),
+                board.data(), static_cast<int>(board.size()),
+                action_seq.data(), static_cast<int>(action_seq.size()));
+        },
+        py::arg("player"), py::arg("betting_round"),
+        py::arg("hole_cards"), py::arg("board"), py::arg("action_seq"),
+        "Compute infoset key using the same C++ hash as training.");
+
     // MCCFR Config
     py::class_<gambletron::MCCFRConfig>(m, "MCCFRConfig")
         .def(py::init<>())
@@ -61,6 +77,7 @@ PYBIND11_MODULE(gambletron_engine, m) {
         .def("load_checkpoint", &gambletron::MCCFRTrainer::load_checkpoint,
              py::arg("path"),
              "Load training state from binary checkpoint file.")
+        .def("set_iterations_done", &gambletron::MCCFRTrainer::set_iterations_done)
         .def("num_infosets", [](const gambletron::MCCFRTrainer& t) {
             return t.get_store().size();
         })
@@ -86,22 +103,5 @@ PYBIND11_MODULE(gambletron_engine, m) {
             if (!data) return {};
             return std::vector<float>(strat, strat + data->num_actions);
         })
-        .def("get_average_strategy", &gambletron::MCCFRTrainer::get_average_strategy)
-        .def("get_all_strategies", [](const gambletron::MCCFRTrainer& t) {
-            py::dict result;
-            t.get_store().for_each([&](gambletron::InfosetKey key, const gambletron::InfosetData& data) {
-                py::list probs;
-                float sum = 0;
-                for (int i = 0; i < data.num_actions; i++) {
-                    sum += std::max(data.regrets[i], (int32_t)0);
-                }
-                for (int i = 0; i < data.num_actions; i++) {
-                    float p = sum > 0 ? std::max(data.regrets[i], (int32_t)0) / sum
-                                      : 1.0f / data.num_actions;
-                    probs.append(p);
-                }
-                result[py::int_(key)] = probs;
-            });
-            return result;
-        });
+        .def("get_average_strategy", &gambletron::MCCFRTrainer::get_average_strategy);
 }

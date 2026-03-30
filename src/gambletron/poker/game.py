@@ -50,6 +50,11 @@ class Game:
         """Play a complete hand. Returns chip changes for each player."""
         initial_stacks = [p.stack for p in self.state.players]
 
+        # Auto-fold busted players (0 stack)
+        for p in self.state.players:
+            if p.stack == 0:
+                p.is_folded = True
+
         self.deck.shuffle()
         self._post_blinds()
         self._deal_hole_cards()
