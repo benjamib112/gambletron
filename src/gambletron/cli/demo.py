@@ -75,7 +75,6 @@ def run_demo(
                     name=f"AI_{i}",
                     blueprint=blueprint,
                     difficulty=difficulty,
-                    seed=i * 37,
                 )
             )
 
@@ -83,7 +82,6 @@ def run_demo(
     table = Table(
         players=players,
         starting_stack=starting_stack,
-        seed=42,
     )
 
     for hand_num in range(1, num_hands + 1):
@@ -175,11 +173,11 @@ def run_ai_only(
             blueprint = Strategy.from_file(blueprint_path)
 
     players = [
-        AIPlayer(name=f"AI_{i}", blueprint=blueprint, difficulty=difficulty, seed=i * 37)
+        AIPlayer(name=f"AI_{i}", blueprint=blueprint, difficulty=difficulty)
         for i in range(num_players)
     ]
 
-    table = Table(players=players, starting_stack=starting_stack, seed=42)
+    table = Table(players=players, starting_stack=starting_stack)
 
     for hand_num in range(1, num_hands + 1):
         changes = table.play_hand()

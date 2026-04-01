@@ -150,34 +150,22 @@ def _is_round_over(state: GameState) -> bool:
     if not active:
         return True
 
-    # Everyone who can act must have had a chance to act
-    if state.num_actions_this_round < len([p for p in state.players if p.is_active or (p.is_all_in and not p.is_folded)]):
-        # Not everyone has acted yet in some cases
-        pass
-
-    current_bet = state.current_bet
     # All active players must have matching bets
+    current_bet = state.current_bet
     for p in active:
         if p.bet_this_round != current_bet:
             return False
 
-    # The last raiser shouldn't get another turn (unless they're the only active player)
-    if state.last_raiser is not None:
-        if state.current_player == state.last_raiser:
-            return True
+    # All active players must have acted at least once this round.
+    # This correctly handles the BB option preflop: even though BB's blind
+    # is tracked as last_raiser, BB still needs to act (check or raise) before
+    # the round can end.
+    acted = {seat for seat, _ in state.action_history[state.betting_round]}
+    for p in active:
+        if p.seat not in acted:
+            return False
 
-    # If no one has raised, everyone needs to have acted at least once
-    if state.last_raiser is None:
-        # Count how many active players have acted
-        acted = set()
-        for seat, _ in state.action_history[state.betting_round]:
-            acted.add(seat)
-        for p in active:
-            if p.seat not in acted:
-                return False
-        return True
-
-    return False
+    return True
 
 
 def _end_betting_round(state: GameState) -> None:

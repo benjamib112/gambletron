@@ -140,7 +140,13 @@ class Game:
 
     def _play_betting_round(self) -> None:
         """Run the current betting round until complete."""
+        current_round = self.state.betting_round
         while not self.state.is_hand_over:
+            # Stop if _end_betting_round has transitioned to the next round;
+            # the outer play_hand loop will deal community cards first.
+            if self.state.betting_round != current_round:
+                break
+
             cp = self.state.current_player
             if cp < 0:
                 break
