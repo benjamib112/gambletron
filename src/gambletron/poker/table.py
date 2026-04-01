@@ -19,6 +19,7 @@ class Table:
         small_blind: int = 50,
         big_blind: int = 100,
         seed: Optional[int] = None,
+        display_sink=None,
     ) -> None:
         if not 2 <= len(players) <= 6:
             raise ValueError(f"Need 2-6 players, got {len(players)}")
@@ -31,6 +32,7 @@ class Table:
         self.deck = Deck(seed)
         self.hand_count = 0
         self.hand_results: List[List[int]] = []
+        self.display_sink = display_sink
 
     def play_hand(self) -> List[int]:
         """Play a single hand and return chip changes."""
@@ -39,8 +41,14 @@ class Table:
         if active_count < 2:
             return [0] * len(self.players)
 
-        # Auto-fold busted players by marking them with 0 stacks
-        # (Game will fold them since they can't post blinds or act)
+        # Tell display a new hand is starting (clears winner banner, sets dealer)
+        if self.display_sink:
+            self.display_sink.hand_start(
+                hand_num=self.hand_count + 1,
+                dealer_pos=self.dealer_pos,
+                num_players=len(self.players),
+            )
+
         game = Game(
             players=self.players,
             stacks=list(self.stacks),
@@ -48,6 +56,7 @@ class Table:
             small_blind=self.small_blind,
             big_blind=self.big_blind,
             deck=self.deck,
+            display_sink=self.display_sink,
         )
         changes = game.play_hand()
 
@@ -57,6 +66,9 @@ class Table:
         self.hand_results.append(changes)
         self.hand_count += 1
         self._rotate_dealer()
+
+        if self.display_sink:
+            self.display_sink.hand_end()
 
         return changes
 

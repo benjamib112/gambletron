@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 from gambletron.players.base import Player
 from gambletron.poker.card import Card, Deck
-from gambletron.poker.hand import evaluate_hand
+from gambletron.poker.hand import describe_hand, evaluate_hand
 from gambletron.poker.rules import apply_action, get_legal_actions, is_legal_action
 from gambletron.poker.state import (
     Action,
@@ -15,6 +15,7 @@ from gambletron.poker.state import (
     GameState,
     PlayerState,
 )
+from gambletron.display.sink import NullDisplaySink
 
 
 class Game:
@@ -28,6 +29,7 @@ class Game:
         small_blind: int = 50,
         big_blind: int = 100,
         deck: Optional[Deck] = None,
+        display_sink=None,
     ) -> None:
         if not 2 <= len(players) <= 6:
             raise ValueError(f"Need 2-6 players, got {len(players)}")
@@ -36,6 +38,7 @@ class Game:
 
         self.players = players
         self.deck = deck or Deck()
+        self.display = display_sink if display_sink is not None else NullDisplaySink()
         self.state = GameState(
             num_players=len(players),
             dealer_pos=dealer_pos,
@@ -62,6 +65,13 @@ class Game:
         # Notify players of hand start
         for i, player in enumerate(self.players):
             player.notify_hand_start(self.state.visible_to(i))
+
+        # Tell display: initial preflop state
+        self.display.preflop(
+            pot=self.state.pot,
+            current_player=self.state.current_player,
+            dealer_pos=self.state.dealer_pos,
+        )
 
         # Main game loop
         while not self.state.is_hand_over:
@@ -137,6 +147,14 @@ class Game:
     def _deal_community(self, n: int) -> None:
         cards = self.deck.deal(n)
         self.state.community_cards.extend(cards)
+        # Notify display of the new community cards
+        next_cp = self.state.current_player if self.state.current_player >= 0 else None
+        self.display.community_cards(
+            betting_round=self.state.betting_round.name,
+            cards=[c.int_value for c in self.state.community_cards],
+            pot=self.state.pot,
+            current_player=next_cp,
+        )
 
     def _play_betting_round(self) -> None:
         """Run the current betting round until complete."""
@@ -169,19 +187,41 @@ class Game:
                     next((a for a in legal if a.type == ActionType.FOLD), legal[0]),
                 )
 
+            # Capture pre-action state before apply_action mutates it
+            to_call       = self.state.current_bet - pstate.bet_this_round
+            round_name    = self.state.betting_round.name
+            stack_before  = pstate.stack
+
             # Notify all players
             for i, p in enumerate(self.players):
                 p.notify_action(cp, action)
 
             apply_action(self.state, action)
 
+            # Push action event to display (use pre-action round name)
+            next_cp = self.state.current_player if self.state.current_player >= 0 else None
+            self.display.action(
+                seat=cp,
+                description=_describe_action(action, to_call, stack_before),
+                pot=self.state.pot,
+                current_player=next_cp,
+                player_folded=[p.is_folded for p in self.state.players],
+                betting_round=round_name,
+            )
+
     def _showdown(self) -> None:
         """Determine winner(s) and distribute the pot."""
         in_hand = self.state.players_in_hand
 
         if len(in_hand) == 1:
-            in_hand[0].stack += self.state.pot
+            pot = self.state.pot
+            in_hand[0].stack += pot
             self.state.pot = 0
+            self.display.winner(
+                seats=[in_hand[0].seat],
+                pot_won=pot,
+                hand_desc={},
+            )
             return
 
         # Evaluate hands
@@ -194,8 +234,43 @@ class Game:
         if not hand_scores:
             return
 
+        # Push showdown event: reveal hole cards
+        self.display.showdown(
+            hole_cards={p.seat: [c.int_value for c in p.hole_cards] for p in in_hand},
+            community_cards=[c.int_value for c in self.state.community_cards],
+            pot=self.state.pot,
+        )
+
+        # Determine winner(s) for display (best hand among those evaluated)
+        best = max(hand_scores.values())
+        winner_seats = [s for s, sc in hand_scores.items() if sc == best]
+        hand_desc = {s: describe_hand(hand_scores[s]) for s in winner_seats}
+        pot_before = self.state.pot
+
         # Handle side pots
         _distribute_pot(self.state, hand_scores)
+
+        self.display.winner(
+            seats=winner_seats,
+            pot_won=pot_before,
+            hand_desc=hand_desc,
+        )
+
+
+def _describe_action(action: Action, to_call: int, stack_before: int) -> str:
+    """Return a short display string for an action, e.g. 'raises to $300'."""
+    if action.type == ActionType.FOLD:
+        return "folds"
+    if action.type == ActionType.CALL:
+        if to_call == 0:
+            return "checks"
+        actual = min(to_call, stack_before)
+        if stack_before <= to_call:
+            return f"calls all-in  (${actual:,})"
+        return f"calls  ${actual:,}"
+    if action.type == ActionType.RAISE:
+        return f"raises to  ${action.amount:,}"
+    return str(action)
 
 
 def _distribute_pot(state: GameState, hand_scores: dict) -> None:

@@ -21,6 +21,9 @@ def run_demo(
     blueprint_path: Optional[str] = None,
     difficulty: Difficulty = Difficulty.EXPERT,
     models_dir: str = "models",
+    display: bool = True,
+    asset_dir: str = "assets/cards",
+    fullscreen: bool = True,
 ) -> None:
     """Run an interactive poker demo."""
     print("=" * 60)
@@ -51,6 +54,7 @@ def run_demo(
         print(f"  Blueprint: {blueprint_path}")
     else:
         print("  Blueprint: None (AI plays uniform random)")
+    print(f"  Display: {'enabled' if display else 'disabled'}")
     print("=" * 60)
 
     # Load blueprint if available
@@ -63,6 +67,21 @@ def run_demo(
             from gambletron.ai.strategy import Strategy
             blueprint = Strategy.from_file(blueprint_path)
         print(f"Loaded blueprint with {len(blueprint)} infosets")
+
+    # Start display process (if enabled)
+    display_sink = None
+    _display_proc = None
+    if display:
+        try:
+            from gambletron.display.process import start_display_process
+            from gambletron.display.sink import QueueDisplaySink
+            _display_proc, _queue = start_display_process(
+                asset_dir=asset_dir, fullscreen=fullscreen,
+            )
+            display_sink = QueueDisplaySink(_queue)
+            print("Display process started.")
+        except Exception as e:
+            print(f"Warning: could not start display ({e}). Continuing without.")
 
     # Create players
     players = []
@@ -82,6 +101,7 @@ def run_demo(
     table = Table(
         players=players,
         starting_stack=starting_stack,
+        display_sink=display_sink,
     )
 
     for hand_num in range(1, num_hands + 1):
@@ -134,12 +154,28 @@ def main() -> None:
     parser.add_argument(
         "--ai-only", action="store_true", help="Watch AI vs AI (no human player)"
     )
+    parser.add_argument(
+        "--no-display", action="store_true", help="Disable the pygame display"
+    )
+    parser.add_argument(
+        "--windowed", action="store_true", help="Run display in a window (for testing)"
+    )
+    parser.add_argument(
+        "--asset-dir", type=str, default="assets/cards",
+        help="Directory containing card PNG files (default: assets/cards)"
+    )
 
     args = parser.parse_args()
     difficulty = Difficulty(args.difficulty)
 
+    use_display = not args.no_display
+    fullscreen  = not args.windowed
+
     if args.ai_only:
-        run_ai_only(args.num_players, args.hands, args.stack, args.blueprint, difficulty)
+        run_ai_only(
+            args.num_players, args.hands, args.stack, args.blueprint, difficulty,
+            display=use_display, asset_dir=args.asset_dir, fullscreen=fullscreen,
+        )
     else:
         run_demo(
             num_players=args.num_players,
@@ -149,6 +185,9 @@ def main() -> None:
             blueprint_path=args.blueprint,
             difficulty=difficulty,
             models_dir=args.models_dir,
+            display=use_display,
+            asset_dir=args.asset_dir,
+            fullscreen=fullscreen,
         )
 
 
@@ -158,6 +197,9 @@ def run_ai_only(
     starting_stack: int,
     blueprint_path: Optional[str],
     difficulty: Difficulty = Difficulty.EXPERT,
+    display: bool = False,
+    asset_dir: str = "assets/cards",
+    fullscreen: bool = True,
 ) -> None:
     """Run AI vs AI game (no human interaction)."""
     print("AI vs AI game")
@@ -172,12 +214,22 @@ def run_ai_only(
             from gambletron.ai.strategy import Strategy
             blueprint = Strategy.from_file(blueprint_path)
 
+    display_sink = None
+    if display:
+        try:
+            from gambletron.display.process import start_display_process
+            from gambletron.display.sink import QueueDisplaySink
+            _, _queue = start_display_process(asset_dir=asset_dir, fullscreen=fullscreen)
+            display_sink = QueueDisplaySink(_queue)
+        except Exception as e:
+            print(f"Warning: could not start display ({e}). Continuing without.")
+
     players = [
         AIPlayer(name=f"AI_{i}", blueprint=blueprint, difficulty=difficulty)
         for i in range(num_players)
     ]
 
-    table = Table(players=players, starting_stack=starting_stack)
+    table = Table(players=players, starting_stack=starting_stack, display_sink=display_sink)
 
     for hand_num in range(1, num_hands + 1):
         changes = table.play_hand()

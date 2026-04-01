@@ -29,6 +29,55 @@ def hand_rank_name(category: int) -> str:
     return _HAND_NAMES[category]
 
 
+# ── Human-readable hand descriptions ─────────────────────────────────────────
+
+_RANK_LONG = {
+    Rank.TWO: "2", Rank.THREE: "3", Rank.FOUR: "4", Rank.FIVE: "5",
+    Rank.SIX: "6", Rank.SEVEN: "7", Rank.EIGHT: "8", Rank.NINE: "9",
+    Rank.TEN: "10", Rank.JACK: "Jack", Rank.QUEEN: "Queen",
+    Rank.KING: "King", Rank.ACE: "Ace",
+}
+_RANK_PLURAL = {
+    Rank.TWO: "2s", Rank.THREE: "3s", Rank.FOUR: "4s", Rank.FIVE: "5s",
+    Rank.SIX: "6s", Rank.SEVEN: "7s", Rank.EIGHT: "8s", Rank.NINE: "9s",
+    Rank.TEN: "10s", Rank.JACK: "Jacks", Rank.QUEEN: "Queens",
+    Rank.KING: "Kings", Rank.ACE: "Aces",
+}
+
+
+def _rn(r: int) -> str:
+    return _RANK_LONG.get(Rank(r), str(r))
+
+
+def _rp(r: int) -> str:
+    return _RANK_PLURAL.get(Rank(r), str(r) + "s")
+
+
+def describe_hand(score: Tuple) -> str:
+    """Convert an evaluate_hand() score tuple to a readable string.
+
+    Examples: "Flush, Ace-high", "Full House, Kings full of Aces", "Pair of Jacks"
+    """
+    cat = score[0]
+    if cat == STRAIGHT_FLUSH:
+        return "Royal Flush" if score[1] == int(Rank.ACE) else f"Straight Flush, {_rn(score[1])}-high"
+    if cat == FOUR_OF_A_KIND:
+        return f"Four {_rp(score[1])}"
+    if cat == FULL_HOUSE:
+        return f"Full House, {_rp(score[1])} full of {_rp(score[2])}"
+    if cat == FLUSH:
+        return f"Flush, {_rn(score[1])}-high"
+    if cat == STRAIGHT:
+        return f"Straight, {_rn(score[1])}-high"
+    if cat == THREE_OF_A_KIND:
+        return f"Three {_rp(score[1])}"
+    if cat == TWO_PAIR:
+        return f"Two Pair, {_rp(score[1])} and {_rp(score[2])}"
+    if cat == ONE_PAIR:
+        return f"Pair of {_rp(score[1])}"
+    return f"{_rn(score[1])}-high"
+
+
 def evaluate_hand(cards: List[Card]) -> Tuple[int, ...]:
     """Evaluate the best 5-card hand from a list of cards (typically 7).
 
