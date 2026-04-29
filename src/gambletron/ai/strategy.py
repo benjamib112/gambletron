@@ -9,6 +9,32 @@ from typing import Dict, List, Optional
 import numpy as np
 
 
+class TrainerStrategy:
+    """Strategy backed by a live C++ MCCFRTrainer — zero-copy, on-demand lookup.
+
+    Wraps a trainer instance and queries infosets directly from the C++ store,
+    avoiding any bulk extraction or file I/O.
+    """
+
+    def __init__(self, trainer) -> None:
+        self._trainer = trainer
+
+    def get(self, key: int) -> Optional[List[float]]:
+        avg = self._trainer.get_average_strategy(key)
+        if not avg:
+            return None
+        return list(avg)
+
+    def get_or_uniform(self, key: int, num_actions: int) -> List[float]:
+        avg = self._trainer.get_average_strategy(key)
+        if avg and len(avg) > 0:
+            return list(avg)
+        return [1.0 / num_actions] * num_actions
+
+    def __len__(self) -> int:
+        return self._trainer.num_infosets()
+
+
 class CheckpointStrategy:
     """Strategy backed by a C++ binary checkpoint — no full extraction needed.
 

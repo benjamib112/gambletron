@@ -12,6 +12,7 @@ class HandStartEvent:
     hand_num: int
     dealer_pos: int
     num_players: int
+    player_stacks: List[int]
 
 
 @dataclass
@@ -20,6 +21,7 @@ class PreflopEvent:
     pot: int
     current_player: int
     dealer_pos: int
+    player_stacks: List[int]
 
 
 @dataclass
@@ -31,6 +33,7 @@ class ActionEvent:
     current_player: Optional[int]   # seat index of next player, or None
     player_folded: List[bool]
     betting_round: str        # 'PREFLOP', 'FLOP', 'TURN', 'RIVER'
+    player_stacks: List[int]
 
 
 @dataclass
@@ -40,6 +43,7 @@ class CommunityCardsEvent:
     community_cards: List[int]    # complete list of card ints so far
     pot: int
     current_player: Optional[int]
+    player_stacks: List[int]
 
 
 @dataclass
@@ -48,6 +52,7 @@ class ShowdownEvent:
     hole_cards: Dict[int, List[int]]  # seat -> [card_int, card_int]
     community_cards: List[int]
     pot: int
+    player_stacks: List[int]
 
 
 @dataclass
@@ -61,4 +66,16 @@ class WinnerEvent:
 @dataclass
 class HandEndEvent:
     """Fired at the very end of a hand (after winner). Currently a no-op on display."""
+    pass
+
+
+@dataclass
+class ShowReadyButtonEvent:
+    """Show a 'Ready to Deal' button on the display for the physical table."""
+    pass
+
+
+@dataclass
+class HideReadyButtonEvent:
+    """Hide the 'Ready to Deal' button."""
     pass

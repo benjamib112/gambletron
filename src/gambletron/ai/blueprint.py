@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from gambletron.ai.abstraction import canonical_preflop
-from gambletron.ai.strategy import Strategy
+from gambletron.ai.strategy import Strategy, TrainerStrategy
 from gambletron.poker.card import Card
 
 # Try C++ engine, fall back to pure Python
@@ -135,7 +135,7 @@ class BlueprintTrainer:
         checkpoint_interval: int = 1000,
         snapshot_points: Optional[dict[str, int]] = None,
         verbose: bool = True,
-    ) -> Strategy:
+    ) -> TrainerStrategy:
         """Run blueprint training.
 
         Args:
@@ -144,6 +144,9 @@ class BlueprintTrainer:
             checkpoint_interval: iterations between checkpoints
             snapshot_points: dict of {name: iteration} for named snapshots
             verbose: print progress
+
+        Returns:
+            A TrainerStrategy that queries the C++ store on demand (no bulk copy).
         """
         if checkpoint_dir:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -196,9 +199,7 @@ class BlueprintTrainer:
                         if verbose:
                             print(f"  >> Saved '{name}' snapshot at iteration {done}")
 
-        # Return None to avoid OOM from full strategy extraction
-        # Use save_checkpoint + load_checkpoint for strategy access
-        return None
+        return TrainerStrategy(self.trainer)
 
     def _extract_strategy(self) -> Strategy:
         """Extract current strategy from the trainer."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from gambletron.hardware.interface import TableController
 from gambletron.players.base import Player
 from gambletron.poker.card import Deck
 from gambletron.poker.game import Game
@@ -20,6 +21,7 @@ class Table:
         big_blind: int = 100,
         seed: Optional[int] = None,
         display_sink=None,
+        table_controller: Optional[TableController] = None,
     ) -> None:
         if not 2 <= len(players) <= 6:
             raise ValueError(f"Need 2-6 players, got {len(players)}")
@@ -33,6 +35,7 @@ class Table:
         self.hand_count = 0
         self.hand_results: List[List[int]] = []
         self.display_sink = display_sink
+        self._controller = table_controller
 
     def play_hand(self) -> List[int]:
         """Play a single hand and return chip changes."""
@@ -47,6 +50,7 @@ class Table:
                 hand_num=self.hand_count + 1,
                 dealer_pos=self.dealer_pos,
                 num_players=len(self.players),
+                player_stacks=list(self.stacks),
             )
 
         game = Game(
@@ -57,6 +61,7 @@ class Table:
             big_blind=self.big_blind,
             deck=self.deck,
             display_sink=self.display_sink,
+            table_controller=self._controller,
         )
         changes = game.play_hand()
 

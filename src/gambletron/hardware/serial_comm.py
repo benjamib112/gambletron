@@ -16,7 +16,7 @@ from gambletron.hardware.interface import (
     SeatSensor,
     TableController,
 )
-from gambletron.hardware.protocol import Message, RFIDCardMap, msg_reset
+from gambletron.hardware.protocol import Message, RFIDCardMap
 from gambletron.poker.card import Card
 
 
@@ -220,14 +220,13 @@ class SerialTableController(TableController):
         self,
         dealer_port: str,
         chip_port: str,
-        rfid_map: RFIDCardMap,
         baudrate: int = 115200,
     ) -> None:
         self._dealer_conn = SerialConnection(dealer_port, baudrate)
         self._chip_conn = SerialConnection(chip_port, baudrate)
-        self._rfid_map = rfid_map
+        self._rfid_map = RFIDCardMap()
 
-        self._card_input = SerialCardInput(self._dealer_conn, rfid_map)
+        self._card_input = SerialCardInput(self._dealer_conn, self._rfid_map)
         self._chip_interface = SerialChipInterface(self._chip_conn)
         self._seat_sensor = SerialSeatSensor(self._dealer_conn)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
+from gambletron.hardware.interface import TableController
 from gambletron.players.base import Player
 from gambletron.poker.card import Card, Deck
 from gambletron.poker.hand import describe_hand, evaluate_hand
@@ -30,6 +31,7 @@ class Game:
         big_blind: int = 100,
         deck: Optional[Deck] = None,
         display_sink=None,
+        table_controller: Optional[TableController] = None,
     ) -> None:
         if not 2 <= len(players) <= 6:
             raise ValueError(f"Need 2-6 players, got {len(players)}")
@@ -39,6 +41,7 @@ class Game:
         self.players = players
         self.deck = deck or Deck()
         self.display = display_sink if display_sink is not None else NullDisplaySink()
+        self._controller = table_controller
         self.state = GameState(
             num_players=len(players),
             dealer_pos=dealer_pos,
@@ -58,7 +61,8 @@ class Game:
             if p.stack == 0:
                 p.is_folded = True
 
-        self.deck.shuffle()
+        if not self._controller:
+            self.deck.shuffle()
         self._post_blinds()
         self._deal_hole_cards()
 
@@ -71,6 +75,7 @@ class Game:
             pot=self.state.pot,
             current_player=self.state.current_player,
             dealer_pos=self.state.dealer_pos,
+            player_stacks=[p.stack for p in self.state.players],
         )
 
         # Main game loop
@@ -94,6 +99,9 @@ class Game:
 
         # Determine winner(s) and award pot
         self._showdown()
+
+        if self._controller:
+            self._controller.signal_hand_over()
 
         # Notify players of hand end
         for i, player in enumerate(self.players):
@@ -141,11 +149,31 @@ class Game:
         self.state.last_raiser = bb_pos  # BB is considered the "raiser" for round-end logic
 
     def _deal_hole_cards(self) -> None:
-        for p in self.state.players:
-            p.hole_cards = self.deck.deal(2)
+        if self._controller:
+            card_input = self._controller.get_card_input()
+            card_input.reset()
+            for p in self.state.players:
+                if p.is_folded:
+                    continue
+                self._controller.deal_card_to(p.seat)
+                c1 = card_input.wait_for_card(p.seat)
+                self._controller.deal_card_to(p.seat)
+                c2 = card_input.wait_for_card(p.seat)
+                if c1 is None or c2 is None:
+                    raise RuntimeError(f"Timed out waiting for hole cards at seat {p.seat}")
+                p.hole_cards = [c1, c2]
+        else:
+            for p in self.state.players:
+                p.hole_cards = self.deck.deal(2)
 
     def _deal_community(self, n: int) -> None:
-        cards = self.deck.deal(n)
+        if self._controller:
+            self._controller.deal_community(n)
+            cards = self._controller.get_card_input().wait_for_community_cards(n)
+            if len(cards) < n:
+                raise RuntimeError(f"Timed out waiting for {n} community cards (got {len(cards)})")
+        else:
+            cards = self.deck.deal(n)
         self.state.community_cards.extend(cards)
         # Notify display of the new community cards
         next_cp = self.state.current_player if self.state.current_player >= 0 else None
@@ -154,6 +182,7 @@ class Game:
             cards=[c.int_value for c in self.state.community_cards],
             pot=self.state.pot,
             current_player=next_cp,
+            player_stacks=[p.stack for p in self.state.players],
         )
 
     def _play_betting_round(self) -> None:
@@ -174,6 +203,9 @@ class Game:
 
             if not pstate.is_active:
                 break
+
+            if self._controller:
+                self._controller.signal_player_turn(cp)
 
             visible = self.state.visible_to(cp)
             action = player.get_action(visible)
@@ -207,6 +239,7 @@ class Game:
                 current_player=next_cp,
                 player_folded=[p.is_folded for p in self.state.players],
                 betting_round=round_name,
+                player_stacks=[p.stack for p in self.state.players],
             )
 
     def _showdown(self) -> None:
@@ -239,6 +272,7 @@ class Game:
             hole_cards={p.seat: [c.int_value for c in p.hole_cards] for p in in_hand},
             community_cards=[c.int_value for c in self.state.community_cards],
             pot=self.state.pot,
+            player_stacks=[p.stack for p in self.state.players],
         )
 
         # Determine winner(s) for display (best hand among those evaluated)

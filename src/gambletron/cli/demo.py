@@ -75,7 +75,7 @@ def run_demo(
         try:
             from gambletron.display.process import start_display_process
             from gambletron.display.sink import QueueDisplaySink
-            _display_proc, _queue = start_display_process(
+            _display_proc, _queue, _ = start_display_process(
                 asset_dir=asset_dir, fullscreen=fullscreen,
             )
             display_sink = QueueDisplaySink(_queue)
@@ -219,7 +219,7 @@ def run_ai_only(
         try:
             from gambletron.display.process import start_display_process
             from gambletron.display.sink import QueueDisplaySink
-            _, _queue = start_display_process(asset_dir=asset_dir, fullscreen=fullscreen)
+            _, _queue, _ = start_display_process(asset_dir=asset_dir, fullscreen=fullscreen)
             display_sink = QueueDisplaySink(_queue)
         except Exception as e:
             print(f"Warning: could not start display ({e}). Continuing without.")
